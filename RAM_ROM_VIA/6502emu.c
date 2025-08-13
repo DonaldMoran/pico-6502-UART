@@ -60,7 +60,12 @@
 #define PIN_21 21
 #define PIN_22 22
 
-
+// START of added code for VIA control lines
+#define PIN_CA1 10
+#define PIN_CA2 11
+#define PIN_CB1 12
+#define PIN_CB2 13
+// END of added code for VIA control lines
 
 
 //#define VIA_BASE_ADDRESS UINT16_C(0x200)
@@ -129,13 +134,28 @@ uint8_t read6502(uint16_t address) {
     else if ((address & 0xFFF0) == VIA_BASE_ADDRESS) {  //the range that the condition covers is 0x200 to 0x20F
         // Populate via_pins with current GPIO input states before calling m6522_tick
         uint32_t current_gpio_state = gpio_get_all();
-        via_pins &= ~(M6522_PA_PINS | M6522_PB_PINS);
+        via_pins &= ~(M6522_PA_PINS | M6522_PB_PINS | M6522_CA1 | M6522_CA2 | M6522_CB1 | M6522_CB2);
         via_pins |= (uint64_t)((current_gpio_state >> GPIO_PORTA_BASE_PIN) & 0xFF) << 48; // PA0-PA7 to M6522_PA0-PA7
         via_pins |= (uint64_t)((current_gpio_state >> GPIO_PORTB_BASE_PIN) & 0xFF) << 56; // PB0-PB7 to M6522_PB0-PB7
+
+        // START of added code for VIA control lines
+        if (gpio_get(PIN_CA1)) via_pins |= M6522_CA1;
+        if (gpio_get(PIN_CA2)) via_pins |= M6522_CA2;
+        if (gpio_get(PIN_CB1)) via_pins |= M6522_CB1;
+        if (gpio_get(PIN_CB2)) via_pins |= M6522_CB2;
+        // END of added code for VIA control lines
 
         via_pins &= ~(M6522_RS_PINS | M6522_CS2); // clear RS pins - set CS2 low
         via_pins |= (M6522_RW | M6522_CS1 | ((uint16_t)M6522_RS_PINS & address));
         via_pins = m6522_tick(&via, via_pins);
+
+        // START of added code for VIA control lines
+        gpio_set_dir(PIN_CA2, (via.pcr & 0x08) ? GPIO_OUT : GPIO_IN);
+        gpio_put(PIN_CA2, (via.pa.c2_out));
+        gpio_set_dir(PIN_CB2, (via.pcr & 0x80) ? GPIO_OUT : GPIO_IN);
+        gpio_put(PIN_CB2, (via.pb.c2_out));
+        // END of added code for VIA control lines
+
         via_update();
         return M6522_GET_DATA(via_pins);
     }
@@ -152,9 +172,16 @@ void write6502(uint16_t address, uint8_t value) {
     else if ((address & 0xFFF0) == VIA_BASE_ADDRESS) { // the range that the condition covers is 0x200 to 0x20F
         // Populate via_pins with current GPIO input states before calling m6522_tick
         uint32_t current_gpio_state = gpio_get_all();
-        via_pins &= ~(M6522_PA_PINS | M6522_PB_PINS);
+        via_pins &= ~(M6522_PA_PINS | M6522_PB_PINS | M6522_CA1 | M6522_CA2 | M6522_CB1 | M6522_CB2);
         via_pins |= (uint64_t)((current_gpio_state >> GPIO_PORTA_BASE_PIN) & 0xFF) << 48; // PA0-PA7 to M6522_PA0-PA7
         via_pins |= (uint64_t)((current_gpio_state >> GPIO_PORTB_BASE_PIN) & 0xFF) << 56; // PB0-PB7 to M6522_PB0-PB7
+
+        // START of added code for VIA control lines
+        if (gpio_get(PIN_CA1)) via_pins |= M6522_CA1;
+        if (gpio_get(PIN_CA2)) via_pins |= M6522_CA2;
+        if (gpio_get(PIN_CB1)) via_pins |= M6522_CB1;
+        if (gpio_get(PIN_CB2)) via_pins |= M6522_CB2;
+        // END of added code for VIA control lines
 
         via_pins &= ~(M6522_RW | M6522_RS_PINS | M6522_CS2); // SET RW pin low to write - clear data pins - clear RS pins
         via_pins |= (M6522_CS1 | ((uint16_t)M6522_RS_PINS & address));
@@ -171,6 +198,13 @@ void write6502(uint16_t address, uint8_t value) {
         gpio_outs |= (uint32_t)(via.pa.outr << GPIO_PORTA_BASE_PIN) & (uint32_t)GPIO_PORTA_MASK;
         gpio_outs |= (uint32_t)(via.pb.outr << GPIO_PORTB_BASE_PIN) & (uint32_t)GPIO_PORTB_MASK;
         gpio_put_masked(gpio_dirs, gpio_outs);
+
+        // START of added code for VIA control lines
+        gpio_set_dir(PIN_CA2, (via.pcr & 0x08) ? GPIO_OUT : GPIO_IN);
+        gpio_put(PIN_CA2, (via.pa.c2_out));
+        gpio_set_dir(PIN_CB2, (via.pcr & 0x80) ? GPIO_OUT : GPIO_IN);
+        gpio_put(PIN_CB2, (via.pb.c2_out));
+        // END of added code for VIA control lines
 
         via_update();
     }
@@ -237,6 +271,21 @@ int main() {
     gpio_outs = 0;
     gpio_init_mask(gpio_dirs);
     gpio_set_dir_all_bits(gpio_dirs);
+
+    // START of added code for VIA control lines
+    gpio_init(PIN_CA1);
+    gpio_set_dir(PIN_CA1, GPIO_IN);
+    gpio_pull_down(PIN_CA1);
+    gpio_init(PIN_CA2);
+    gpio_set_dir(PIN_CA2, GPIO_IN);
+    gpio_pull_down(PIN_CA2);
+    gpio_init(PIN_CB1);
+    gpio_set_dir(PIN_CB1, GPIO_IN);
+    gpio_pull_down(PIN_CB1);
+    gpio_init(PIN_CB2);
+    gpio_set_dir(PIN_CB2, GPIO_IN);
+    gpio_pull_down(PIN_CB2);
+    // END of added code for VIA control lines
 #endif
 
     start = get_absolute_time();

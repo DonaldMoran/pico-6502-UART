@@ -1,0 +1,145 @@
+Pico-6502-UART Project GPIO Pinout
+
+This document outlines the GPIO pin assignments for the Raspberry Pi Pico in this project.
+
++-----------------+------------------+
+| Pin             | Purpose          |
++-----------------+------------------+
+| GPIO 0          | VIA Port A0      |
+| GPIO 1          | VIA Port A1      |
+| GPIO 2          | VIA Port A2      |
+| GPIO 3          | VIA Port A3      |
+| GPIO 4          | VIA Port A4      |
+| GPIO 5          | VIA Port A5      |
+| GPIO 6          | VIA Port A6      |
+| GPIO 7          | VIA Port A7      |
+| GPIO 8          | UART1 TX         |
+| GPIO 9          | UART1 RX         |
+| GPIO 10         | VIA CA1          |
+| GPIO 11         | VIA CA2          |
+| GPIO 12         | VIA CB1          |
+| GPIO 13         | VIA CB2          |
+| GPIO 14         | **Free**         |
+| GPIO 15         | VIA Port B0      |
+| GPIO 16         | VIA Port B1      |
+| GPIO 17         | VIA Port B2      |
+| GPIO 18         | VIA Port B3      |
+| GPIO 19         | VIA Port B4      |
+| GPIO 20         | VIA Port B5      |
+| GPIO 21         | VIA Port B6      |
+| GPIO 22         | VIA Port B7      |
+| GPIO 26         | UART0 TX         |
+| GPIO 27         | UART0 RX         |
+| GPIO 28         | **Free**         |
++-----------------+------------------+
+
+## Modified Files
+
+- `/home/noneya/pico/pico-6502-UART/RAM_ROM_VIA/6502emu.c`
+- `/home/noneya/pico/pico-6502-UART/EATERSD10/doit.sh`
+
+## Summary of Changes
+
+The following changes were made to implement the 6522 VIA control lines (CA1, CA2, CB1, CB2) on GPIOs 10, 11, 12, and 13.
+
+### Pin Definitions added to `6502emu.c`:
+
+```c
+// START of added code for VIA control lines
+#define PIN_CA1 10
+#define PIN_CA2 11
+#define PIN_CB1 12
+#define PIN_CB2 13
+// END of added code for VIA control lines
+```
+
+### GPIO Initialization added to `main()` in `6502emu.c`:
+
+```c
+// START of added code for VIA control lines
+gpio_init(PIN_CA1);
+gpio_set_dir(PIN_CA1, GPIO_IN);
+gpio_pull_down(PIN_CA1);
+gpio_init(PIN_CA2);
+gpio_set_dir(PIN_CA2, GPIO_IN);
+gpio_pull_down(PIN_CA2);
+gpio_init(PIN_CB1);
+gpio_set_dir(PIN_CB1, GPIO_IN);
+gpio_pull_down(PIN_CB1);
+gpio_init(PIN_CB2);
+gpio_set_dir(PIN_CB2, GPIO_IN);
+gpio_pull_down(PIN_CB2);
+// END of added code for VIA control lines
+```
+
+### Input/Output Logic added to `read6502()` and `write6502()` in `6502emu.c`:
+
+In both `read6502()` and `write6502()`, the following code was added before the call to `m6522_tick()`:
+
+```c
+// START of added code for VIA control lines
+if (gpio_get(PIN_CA1)) via_pins |= M6522_CA1;
+if (gpio_get(PIN_CA2)) via_pins |= M6522_CA2;
+if (gpio_get(PIN_CB1)) via_pins |= M6522_CB1;
+if (gpio_get(PIN_CB2)) via_pins |= M6522_CB2;
+// END of added code for VIA control lines
+```
+
+In both `read6502()` and `write6502()`, the following code was added after the call to `m6522_tick()`:
+
+```c
+// START of added code for VIA control lines
+gpio_set_dir(PIN_CA2, (via.pcr & 0x08) ? GPIO_OUT : GPIO_IN);
+gpio_put(PIN_CA2, (via.pa.c2_out));
+gpio_set_dir(PIN_CB2, (via.pcr & 0x80) ? GPIO_OUT : GPIO_IN);
+gpio_put(PIN_CB2, (via.pb.c2_out));
+// END of added code for VIA control lines
+```
+
+### Build Script Fix in `EATERSD10/doit.sh`:
+
+The build script was modified to ensure it runs from the correct directory.
+
+```bash
+#!/bin/bash
+cd "$(dirname "$0")"
+...
+```
+
+## How to Test
+
+To test the functionality of the new control lines, you can use the following 6502 assembly program. This program will configure CA2 and CB2 as outputs and then toggle them, allowing you to verify the signals with a multimeter or oscilloscope.
+
+1.  **Replace the contents of `/home/noneya/pico/pico-6502-UART/EATERSD10/four-bit-mode-msbasic/eater.s` with the following code:**
+
+```assembly
+    .org $8000
+
+    LDA #%00001110 ; Set CA2 to output, high
+    STA $600C      ; Store to PCR (Peripheral Control Register)
+
+    LDA #%11100000 ; Set CB2 to output, high
+    STA $600C      ; Store to PCR
+
+    ; At this point, you can measure a high voltage (3.3V) on GPIO 11 and GPIO 13.
+
+    LDA #%00001100 ; Set CA2 to output, low
+    STA $600C      ; Store to PCR
+
+    LDA #%11000000 ; Set CB2 to output, low
+    STA $600C      ; Store to PCR
+
+    ; At this point, you can measure a low voltage (0V) on GPIO 11 and GPIO 13.
+
+    JMP $8000      ; Loop back to the start to repeat the process.
+```
+
+2.  **Run the build script:**
+
+```bash
+/home/noneya/pico/pico-6502-UART/EATERSD10/doit.sh
+```
+
+3.  **Verify the output:**
+
+    Use a multimeter or oscilloscope to probe GPIO 11 (CA2) and GPIO 13 (CB2). You should see the voltage on these pins toggling between high (3.3V) and low (0V) as the 6502 program runs.

@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")"
 python create.py
 cp eater.h ../RAM_ROM_VIA/
 rm -f *.bin *.map *.h
