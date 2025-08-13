@@ -7,3 +7,11 @@ build/
 *.map
 *.dis
 tmp/
+
+.venv/
+__pycache__/
+*.pyc
+*.log
+.env
+.DS_Store
+*.swp
